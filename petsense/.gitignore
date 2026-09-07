@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.log
+
+# Node / Frontend
+node_modules/
+dist/
+.next/
+out/
+*.tsbuildinfo
+.eslintcache
+.parcel-cache
+
+# Environment
+.env
+.env.local
+.env.production
+*.env
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.iml
+
+# ML artifacts
+*.onnx
+*.pt
+*.pth
+*.pkl
+*.h5
+ml/data/raw/
+ml/data/processed/
+ml/models/*.onnx
+
+# Uploads (runtime)
+backend/uploads/
+backend/petsense.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
