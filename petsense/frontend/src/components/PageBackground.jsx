@@ -1,5 +1,3 @@
-import PageBackground from './PageBackground'
-
 /** Softer ambient background — no harsh competing colors */
 export default function PageBackground() {
   return (
