@@ -2,7 +2,13 @@
 Disease assessment engine — maps visual signals to possible conditions,
 causes, treatments, and precautions.
 
-Rule-based veterinary wellness knowledge (NOT a diagnostic system).
+Enhanced with:
+- Weighted multi-signal scoring (uses new texture, HSV, color variance signals)
+- Concordance-based confidence — scores rise when multiple independent signals agree
+- New condition: Tick/Flea Dermatitis
+- Better "healthy" baseline detection
+- Rule-based veterinary wellness knowledge (NOT a diagnostic system)
+
 Always requires professional vet confirmation for treatment decisions.
 """
 
@@ -163,6 +169,29 @@ _CONDITIONS = {
             "Secondary infections are common — watch for worsening lesions",
         ],
     },
+    "tick_flea_dermatitis": {
+        "name": "Tick/Flea Infestation Dermatitis",
+        "summary": "Skin irritation and hair loss caused by heavy tick or flea parasites, with risk of tick-borne diseases.",
+        "causes": [
+            "Heavy tick or flea infestation from outdoor exposure",
+            "Tick bites can transmit Ehrlichiosis, Babesiosis, or Lyme disease",
+            "Flea saliva causes allergic reactions in sensitive animals",
+            "Common in tropical and subtropical climates",
+        ],
+        "cures": [
+            "Manual tick removal with tick tweezers — grasp close to skin and pull straight out",
+            "Vet-prescribed oral tick/flea preventatives (e.g., NexGard, Bravecto, Simparica)",
+            "Topical spot-on treatments as directed by vet",
+            "Blood test for tick-borne diseases if the animal appears lethargic or feverish",
+            "Treat the environment — wash bedding, use insecticide in living areas",
+        ],
+        "precautions": [
+            "Do not squeeze or crush ticks — this can inject pathogens into the animal",
+            "Monitor for lethargy, fever, or dark urine after tick removal (signs of tick-borne illness)",
+            "Year-round prevention is recommended in endemic areas",
+            "Check humans and other pets for tick transfer",
+        ],
+    },
     "healthy": {
         "name": "No Significant Disease Detected",
         "summary": "Visual analysis did not find strong indicators of skin disease, malnutrition, or acute distress.",
@@ -192,44 +221,87 @@ def assess_health(signals: ImageSignals, species: str = "dog") -> HealthReport:
     emaciated = signals.emaciation_score > 0.40
     emaciated_mild = signals.emaciation_score > 0.25
 
+    # ── New signal-based thresholds ───────────────────────────────────────
+    low_texture = signals.texture_score < 0.30
+    high_color_var = signals.color_variance > 0.30
+    red_dominant = signals.red_channel_dominance > 0.15
+    hsv_skin_detected = signals.hsv_skin_ratio > 0.15
+    asymmetric = signals.symmetry_score < 0.40
+
+    # Count how many independent signals agree on skin concern
+    skin_concordance = sum([
+        skin_moderate,
+        hsv_skin_detected,
+        irritation_moderate,
+        low_texture,
+        red_dominant,
+        high_color_var,
+        any(z > 0.15 for z in signals.zone_scores),
+    ])
+
     # ── Mange (most common in street dogs with hair loss) ─────────────────
     if skin_high and irritation_moderate:
-        score = min(0.95, 0.55 + signals.skin_exposure_ratio * 0.35 + signals.skin_irritation_score * 0.15)
+        score = min(0.95, 0.55 + signals.skin_exposure_ratio * 0.25 + signals.skin_irritation_score * 0.10 + signals.hsv_skin_ratio * 0.10)
+        if skin_concordance >= 4:
+            score = min(0.95, score * 1.10)
         findings.append(_make_finding("sarcoptic_mange", score))
 
     if skin_moderate and (emaciated_mild or irritation_moderate):
-        score = min(0.85, 0.40 + signals.skin_exposure_ratio * 0.30 + signals.emaciation_score * 0.20)
+        score = min(0.85, 0.40 + signals.skin_exposure_ratio * 0.20 + signals.emaciation_score * 0.15 + signals.hsv_skin_ratio * 0.10)
+        if asymmetric:  # Demodectic mange is often patchy/asymmetric
+            score = min(0.85, score + 0.05)
         findings.append(_make_finding("demodectic_mange", score))
 
     # ── Secondary infections ──────────────────────────────────────────────
     if irritation_high and skin_moderate:
-        score = min(0.80, 0.45 + signals.skin_irritation_score * 0.35)
+        score = min(0.80, 0.45 + signals.skin_irritation_score * 0.25 + signals.red_channel_dominance * 0.10)
         findings.append(_make_finding("bacterial_dermatitis", score))
 
     if skin_moderate and irritation_moderate and signals.coat_health_score < 0.5:
-        score = min(0.65, 0.35 + (1 - signals.coat_health_score) * 0.30)
+        score = min(0.65, 0.35 + (1 - signals.coat_health_score) * 0.20 + signals.color_variance * 0.10)
+        if asymmetric:  # Ringworm often creates circular asymmetric patches
+            score = min(0.70, score + 0.08)
         findings.append(_make_finding("fungal_dermatitis", score))
 
     # ── Malnutrition ──────────────────────────────────────────────────────
     if emaciated:
-        score = min(0.90, 0.50 + signals.emaciation_score * 0.40)
+        score = min(0.90, 0.50 + signals.emaciation_score * 0.35 + (1 - signals.texture_score) * 0.05)
         findings.append(_make_finding("malnutrition", score))
     elif emaciated_mild and skin_moderate:
-        score = min(0.70, 0.35 + signals.emaciation_score * 0.30)
+        score = min(0.70, 0.35 + signals.emaciation_score * 0.25 + signals.skin_exposure_ratio * 0.05)
         findings.append(_make_finding("malnutrition", score))
 
     # ── Allergies (milder skin signals) ───────────────────────────────────
     if irritation_moderate and not skin_high and signals.coat_health_score > 0.55:
-        score = min(0.60, 0.30 + signals.skin_irritation_score * 0.40)
+        score = min(0.60, 0.30 + signals.skin_irritation_score * 0.30 + signals.red_channel_dominance * 0.10)
         findings.append(_make_finding("allergic_dermatitis", score))
+
+    # ── Tick/Flea Dermatitis (new condition) ───────────────────────────────
+    # Characterized by localized skin irritation without widespread hair loss,
+    # often with high red channel dominance in specific zones
+    if red_dominant and irritation_moderate and not skin_high:
+        zone_max = max(signals.zone_scores) if signals.zone_scores else 0.0
+        score = min(0.60, 0.28 + signals.red_channel_dominance * 0.20 + zone_max * 0.15)
+        if signals.coat_health_score > 0.5:  # Mostly healthy coat + localized irritation
+            score = min(0.65, score + 0.05)
+        findings.append(_make_finding("tick_flea_dermatitis", score))
 
     # Sort by confidence descending, deduplicate by keeping top scores
     findings.sort(key=lambda f: f.confidence, reverse=True)
     findings = _dedupe_findings(findings)
 
-    # Healthy fallback
+    # Healthy fallback — enhanced with concordance check
     if not findings or (findings and findings[0].confidence < 0.35):
-        findings = [_make_finding("healthy", max(0.55, signals.coat_health_score * 0.7 + signals.image_quality_score * 0.2))]
+        healthy_signals = sum([
+            signals.coat_health_score > 0.65,
+            signals.texture_score > 0.35,
+            signals.skin_exposure_ratio < 0.10,
+            signals.symmetry_score > 0.50,
+            signals.emaciation_score < 0.20,
+            signals.red_channel_dominance < 0.10,
+        ])
+        healthy_conf = max(0.55, 0.40 + healthy_signals * 0.08 + signals.image_quality_score * 0.10)
+        findings = [_make_finding("healthy", min(0.92, healthy_conf))]
 
     # Cap to top 3 most relevant
     findings = findings[:3]

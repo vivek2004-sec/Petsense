@@ -137,20 +137,55 @@ class InferenceService:
         vision: Optional[VisionResult] = None,
         audio: Optional[AudioResult] = None,
     ) -> FusedReport:
-        """Fuse vision + audio results into a single report."""
+        """Fuse vision + audio results into a single report.
+
+        Enhanced with:
+        - Bayesian-inspired confidence merging when both modalities present
+        - Weighted emotion smoothing (not winner-takes-all)
+        - Better pain risk escalation using signal concordance
+        """
         if vision is None and audio is None:
             raise ValueError("At least one of vision or audio result is required.")
 
-        # ── Emotion label: vision wins, fall back to audio proxy ──────────
-        emotion_label = vision.emotion_label if vision else _audio_to_emotion(audio.audio_label)
+        # ── Emotion label: weighted combination when both are present ─────
+        if vision and audio:
+            audio_emotion = _audio_to_emotion(audio.audio_label)
+            if vision.emotion_label == audio_emotion:
+                # Both agree — use the shared label with boosted confidence
+                emotion_label = vision.emotion_label
+                confidence = _bayesian_merge(vision.confidence, audio.confidence)
+            else:
+                # Disagree — weight by individual confidence
+                if vision.confidence >= audio.confidence:
+                    emotion_label = vision.emotion_label
+                else:
+                    emotion_label = audio_emotion
+                # Blended confidence is lower when modalities disagree
+                confidence = (
+                    vision.confidence * 0.6 + audio.confidence * 0.4
+                ) * 0.90  # 10% penalty for disagreement
+        elif vision:
+            emotion_label = vision.emotion_label
+            confidence = vision.confidence
+        else:
+            emotion_label = _audio_to_emotion(audio.audio_label)
+            confidence = audio.confidence
+
         pain_risk = vision.pain_risk if vision else "Low"
-        confidence = vision.confidence if vision else audio.confidence
 
         # ── Audio can escalate pain risk ───────────────────────────────────
         if audio and audio.audio_label == "pain-whine":
             pain_risk = _escalate_pain_risk(pain_risk)
-            if confidence < audio.confidence:
+            # Pain-whine audio signal adds confidence when vision also detects concern
+            if vision and vision.pain_risk != "Low":
+                confidence = min(1.0, confidence + 0.08)
+            elif not vision:
                 confidence = min(1.0, (confidence + audio.confidence) / 2 + 0.05)
+
+        # Audio distress can nudge pain risk up when combined with visual cues
+        if audio and audio.audio_label == "distressed" and vision and vision.pain_risk == "Low":
+            if vision.confidence < 0.55:
+                pain_risk = "Medium"  # Low-confidence vision + distressed audio = worth flagging
 
         # ── Combine cues ──────────────────────────────────────────────────
         cues: List[str] = []
