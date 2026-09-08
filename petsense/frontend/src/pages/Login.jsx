@@ -23,7 +23,11 @@ export default function Login() {
       toast.success('Welcome back! 🐾')
       navigate('/dashboard')
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Invalid email or password')
+      if (!err.response) {
+        toast.error('Cannot connect to backend server. Check VITE_API_URL on Vercel.')
+      } else {
+        toast.error(err.response?.data?.detail || 'Invalid email or password')
+      }
     } finally {
       setLoading(false)
     }

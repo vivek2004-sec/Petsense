@@ -29,7 +29,11 @@ export default function Register() {
       toast.success('Account created! 🐾 Welcome to PetSense')
       navigate('/dashboard')
     } catch (err) {
-      setError(err.response?.data?.detail || 'Registration failed. Please try again.')
+      if (!err.response) {
+        setError('Cannot connect to backend server. Ensure VITE_API_URL is set in Vercel environment variables and Render backend is awake.')
+      } else {
+        setError(err.response?.data?.detail || 'Registration failed. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
