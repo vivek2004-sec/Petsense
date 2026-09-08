@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     upload_dir: str = "./uploads"
     max_upload_size_mb: int = 20
 
+    # CORS
+    cors_origins: str = "*"
+
     class Config:
         env_file = ".env"
         case_sensitive = False
