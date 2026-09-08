@@ -35,8 +35,10 @@ function PublicRoute({ children }) {
 import { GoogleOAuthProvider } from '@react-oauth/google'
 
 export default function App() {
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1000000000000-placeholder.apps.googleusercontent.com'
+
   return (
-    <GoogleOAuthProvider clientId="YOUR_GOOGLE_CLIENT_ID">
+    <GoogleOAuthProvider clientId={googleClientId}>
       <AuthProvider>
         <BrowserRouter>
           <PageBackground />
