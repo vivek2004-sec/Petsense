@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -17,6 +18,9 @@ class Settings(BaseSettings):
     # Storage
     upload_dir: str = "./uploads"
     max_upload_size_mb: int = 20
+
+    # OAuth / Auth
+    google_client_id: Optional[str] = None
 
     # CORS
     cors_origins: str = "*"

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { PawPrint, Mail, Lock, LogIn, Sparkles } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { GoogleLogin } from '@react-oauth/google'
+import GoogleAuthButton from '../components/GoogleAuthButton'
 import FormField from '../components/FormField'
 import toast from 'react-hot-toast'
 
@@ -93,13 +93,7 @@ export default function Login() {
 
           <div className="auth-divider"><span>or</span></div>
 
-          <div className="flex justify-center">
-            <GoogleLogin
-              onSuccess={async (cr) => { try { await googleLogin(cr.credential); toast.success('Welcome back! 🐾'); navigate('/dashboard') } catch (err) { toast.error(err.response?.data?.detail || 'Google sign in failed') } }}
-              onError={() => toast.error('Google sign in failed')}
-              theme="filled_black" shape="pill" size="large" width="100%"
-            />
-          </div>
+          <GoogleAuthButton mode="login" />
 
           <p className="text-center text-muted text-sm">
             Don't have an account?{' '}

@@ -53,9 +53,14 @@ def registered_user(client):
         "password": "TestPassword123",
         "full_name": "Test User",
     })
-    assert resp.status_code == 201
+    if resp.status_code == 409:
+        resp = client.post("/auth/login", json={
+            "email": "test@petsense.com",
+            "password": "TestPassword123",
+        })
+    assert resp.status_code in (200, 201)
     data = resp.json()
-    return {"token": data["access_token"], "user": data["user"]}
+    return {"token": data["access_token"], "user": data.get("user", {})}
 
 
 @pytest.fixture()

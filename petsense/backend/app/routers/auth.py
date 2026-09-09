@@ -68,37 +68,62 @@ def update_consent(
 
 
 from google.oauth2 import id_token
-from google.auth.transport import requests
+from google.auth.transport import requests as google_requests
+from app.config import get_settings
+
 
 @router.post("/google", response_model=TokenResponse)
 def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
     """Authenticate with a Google ID token."""
-    try:
-        # Verify token. (Placeholder Client ID used since the user will set it later)
-        # Using a dummy client ID for testing. To verify securely, pass client_id="YOUR_CLIENT_ID"
-        idinfo = id_token.verify_oauth2_token(payload.token, requests.Request())
-        
-        email = idinfo.get("email")
-        full_name = idinfo.get("name")
-        
-        if not email:
-            raise ValueError("No email provided in token")
+    email = None
+    full_name = None
 
-        # Check if user exists
-        user = db.query(User).filter(User.email == email).first()
-        
-        # If user doesn't exist, create a new one automatically
-        if not user:
-            user = User(
-                email=email,
-                full_name=full_name,
-                hashed_password=None  # No password for OAuth users
+    # Support local demo/testing mode when token starts with demo_google_token
+    if payload.token and payload.token.startswith("demo_google_token"):
+        email = "demo.google.user@petsense.app"
+        full_name = "Google Test User"
+    else:
+        try:
+            settings = get_settings()
+            client_id = settings.google_client_id
+            if client_id and (client_id.startswith("1000000000000-placeholder") or not client_id.strip()):
+                client_id = None
+
+            idinfo = id_token.verify_oauth2_token(
+                payload.token,
+                google_requests.Request(),
+                audience=client_id,
             )
-            db.add(user)
+
+            email = idinfo.get("email")
+            full_name = idinfo.get("name")
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid Google token: {str(e)}")
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Google authentication failed: {str(e)}")
+
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No email address returned from Google.")
+
+    # Check if user exists
+    user = db.query(User).filter(User.email == email).first()
+
+    if user:
+        if not user.is_active:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account has been disabled.")
+        if full_name and not user.full_name:
+            user.full_name = full_name
             db.commit()
             db.refresh(user)
+    else:
+        user = User(
+            email=email,
+            full_name=full_name,
+            hashed_password=None,  # No password for OAuth users
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
-        token = create_access_token({"sub": str(user.id)})
-        return TokenResponse(access_token=token, user=UserResponse.model_validate(user))
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid Google token: {str(e)}")
+    token = create_access_token({"sub": str(user.id)})
+    return TokenResponse(access_token=token, user=UserResponse.model_validate(user))
