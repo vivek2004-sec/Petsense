@@ -14,13 +14,24 @@ client.interceptors.request.use((config) => {
   return config
 })
 
-// Redirect to login on 401
+// Redirect to login on 401 for protected endpoints
 client.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('petsense_token')
-      window.location.href = '/login'
+      const requestUrl = err.config?.url || ''
+      const isAuthEndpoint =
+        requestUrl.includes('/auth/login') ||
+        requestUrl.includes('/auth/register') ||
+        requestUrl.includes('/auth/google')
+      const isAuthPage =
+        window.location.pathname === '/login' ||
+        window.location.pathname === '/register'
+
+      if (!isAuthEndpoint && !isAuthPage) {
+        localStorage.removeItem('petsense_token')
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(err)
   }
